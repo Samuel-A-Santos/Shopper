@@ -11,14 +11,21 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fastify/mongodb": "^8.0.0",
     "@google/generative-ai": "^0.17.1",
+    "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
+    "googleapis": "^143.0.0",
     "joi": "^17.13.3",
-    "node-fetch": "^3.3.2"
+    "mongodb": "^6.8.0",
+    "node-fetch": "^3.3.2",
+    "stream": "^0.0.3",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
     "@types/node": "^22.5.1",
+    "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.4",
     "typescript": "^5.5.4"
   }

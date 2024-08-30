@@ -1,8 +1,18 @@
-import fastify from 'fastify';
-import scanRoutes from './modules/scan/scan.routes';
+import fastify from "fastify";
+import scanRoutes from "./modules/scan/scan.routes";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const server = fastify();
 
+server.register(require('@fastify/mongodb'), {
+  // force to close the mongodb connection when app stopped
+  // the default value is false
+  forceClose: true,
+
+  url: 'mongodb://localhost/projeto2'
+})
 
 server.register(scanRoutes);
 
