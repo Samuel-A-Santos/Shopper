@@ -1,14 +1,20 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.confirmScan = exports.uploadScan = void 0;
+exports.uploadScan = void 0;
 const scan_service_1 = require("./scan.service");
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
 const generative_ai_1 = require("@google/generative-ai");
 const uuid_1 = require("uuid");
 const scan_schema_1 = require("./scan.schema");
 const uploadScan = async function (request, reply) {
     try {
+        // @ts-ignore
         const _this = this;
-        const users = _this.mongo.db.collection('users');
+        const users = _this.mongo.db.collection("users");
         const body = request.body;
         const value = scan_schema_1.ScanSchema.validate(body);
         const measured_number = await queryGemini(request);
@@ -19,14 +25,14 @@ const uploadScan = async function (request, reply) {
             measure_datetime: body.measure_datetime,
             measure_type: body.measure_type,
             measured_number,
-            measure_uuid: (0, uuid_1.v4)()
+            measure_uuid: (0, uuid_1.v4)(),
         };
         if (user) {
             // User exists, update the document by pushing the new scan
             await users.updateOne({ customer_code: body.customer_code }, {
                 $push: {
-                    scans: newScan
-                }
+                    scans: newScan,
+                },
             });
         }
         else {
@@ -48,54 +54,6 @@ const uploadScan = async function (request, reply) {
     }
 };
 exports.uploadScan = uploadScan;
-const confirmScan = async (request, reply) => {
-    try {
-        // Retrieve db from Fastify instance
-        const _this = this;
-        const users = _this.mongo.db.collection('users');
-        const body = request.body;
-        const db = _this.mongo.db;
-        // Validate request body
-        const value = await (0, scan_service_1.validateConfirmData)(request.body);
-        // Find existing scan by UUID
-        const existingScan = await (0, scan_service_1.findMeasureUUID)(db, value.measure_uuid);
-        if (!existingScan) {
-            return reply.code(404).send({
-                error_code: "MEASURE_NOT_FOUND",
-                error_description: "Leitura não encontrada",
-            });
-        }
-        // Check if the scan has already been confirmed
-        if (existingScan.confirmed_value !== undefined) {
-            return reply.code(409).send({
-                error_code: "CONFIRMATION_DUPLICATE",
-                error_description: "Leitura já confirmada",
-            });
-        }
-        // Validate confirmed_value against measured_number
-        if (existingScan.measured_number !== value.confirmed_value) {
-            return reply.code(400).send({
-                error_code: "INVALID_DATA",
-                error_description: "O valor confirmado não corresponde ao número medido",
-            });
-        }
-        // Update scan with confirmed value
-        await (0, scan_service_1.updateConfirmedValue)(db, value.measure_uuid, value.confirmed_value);
-        return reply.code(200).send({ success: true });
-    }
-    catch (e) {
-        if (e.details) {
-            return reply.code(400).send({
-                error_code: "INVALID_DATA",
-                error_description: e.details
-                    .map((detail) => detail.message)
-                    .join(", "),
-            });
-        }
-        return reply.code(500).send(e.message);
-    }
-};
-exports.confirmScan = confirmScan;
 // export const testGemini = async (
 //   request: FastifyRequest,
 //   reply: FastifyReply
@@ -240,7 +198,7 @@ exports.confirmScan = confirmScan;
 // // };
 async function queryGemini(request) {
     const value = await (0, scan_service_1.validateUploadData)(request.body);
-    const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.API_KEY);
+    const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.API_KEY || "");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const prompt = "Retornar a medida do registro. Apenas o número, sem os zero a esquerda";
     const image = {
@@ -252,5 +210,6 @@ async function queryGemini(request) {
     const result = await model.generateContent([prompt, image]);
     const response = await result.response;
     const measure = response.text();
-    return Number(measure.split(' ')[0]);
+    return Number(measure.split(" ")[0]);
 }
+//# sourceMappingURL=scan.controller.js.map

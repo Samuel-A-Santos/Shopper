@@ -31,3 +31,4 @@ exports.ConfirmSchema = joi_1.default.object({
         "any.required": `"confirmed_value" is required`
     })
 });
+//# sourceMappingURL=scan.schema.js.map

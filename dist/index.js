@@ -12,13 +12,14 @@ server.register(require('@fastify/mongodb'), {
     // force to close the mongodb connection when app stopped
     // the default value is false
     forceClose: true,
-    url: 'mongodb://localhost/projeto2'
+    url: process.env.MONGODB_URI || 'mongodb://localhost/projeto2'
 });
 server.register(scan_routes_1.default);
-server.listen({ port: 8080 }, (err, address) => {
+server.listen({ port: 8080, host: '0.0.0.0' }, (err, address) => {
     if (err) {
         console.error(err);
         process.exit(1);
     }
     console.log(`Server listening at ${address}`);
 });
+//# sourceMappingURL=index.js.map

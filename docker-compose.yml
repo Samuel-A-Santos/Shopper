@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  app:
+    env_file:
+      - .env
+    build: .
+    ports:
+      - "8080:8080"
+      - "9229:9229"  # Add this line for debugging
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/projeto2
+      - API_KEY=${API_KEY}
+    depends_on:
+      - mongo
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./dist:/usr/src/app/dist
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:

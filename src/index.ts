@@ -11,12 +11,12 @@ server.register(require('@fastify/mongodb'), {
   // the default value is false
   forceClose: true,
 
-  url: 'mongodb://localhost/projeto2'
+  url: process.env.MONGODB_URI || 'mongodb://localhost/projeto2'
 })
 
 server.register(scanRoutes);
 
-server.listen({ port: 8080 }, (err, address) => {
+server.listen({ port: 8080, host: '0.0.0.0' }, (err, address) => {
   if (err) {
     console.error(err);
     process.exit(1);
