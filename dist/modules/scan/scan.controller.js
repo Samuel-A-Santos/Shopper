@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.uploadScan = void 0;
+exports.confirmScan = exports.uploadScan = void 0;
 const scan_service_1 = require("./scan.service");
 const generative_ai_1 = require("@google/generative-ai");
 const uuid_1 = require("uuid");
@@ -48,6 +48,54 @@ const uploadScan = async function (request, reply) {
     }
 };
 exports.uploadScan = uploadScan;
+const confirmScan = async (request, reply) => {
+    try {
+        // Retrieve db from Fastify instance
+        const _this = this;
+        const users = _this.mongo.db.collection('users');
+        const body = request.body;
+        const db = _this.mongo.db;
+        // Validate request body
+        const value = await (0, scan_service_1.validateConfirmData)(request.body);
+        // Find existing scan by UUID
+        const existingScan = await (0, scan_service_1.findMeasureUUID)(db, value.measure_uuid);
+        if (!existingScan) {
+            return reply.code(404).send({
+                error_code: "MEASURE_NOT_FOUND",
+                error_description: "Leitura não encontrada",
+            });
+        }
+        // Check if the scan has already been confirmed
+        if (existingScan.confirmed_value !== undefined) {
+            return reply.code(409).send({
+                error_code: "CONFIRMATION_DUPLICATE",
+                error_description: "Leitura já confirmada",
+            });
+        }
+        // Validate confirmed_value against measured_number
+        if (existingScan.measured_number !== value.confirmed_value) {
+            return reply.code(400).send({
+                error_code: "INVALID_DATA",
+                error_description: "O valor confirmado não corresponde ao número medido",
+            });
+        }
+        // Update scan with confirmed value
+        await (0, scan_service_1.updateConfirmedValue)(db, value.measure_uuid, value.confirmed_value);
+        return reply.code(200).send({ success: true });
+    }
+    catch (e) {
+        if (e.details) {
+            return reply.code(400).send({
+                error_code: "INVALID_DATA",
+                error_description: e.details
+                    .map((detail) => detail.message)
+                    .join(", "),
+            });
+        }
+        return reply.code(500).send(e.message);
+    }
+};
+exports.confirmScan = confirmScan;
 // export const testGemini = async (
 //   request: FastifyRequest,
 //   reply: FastifyReply

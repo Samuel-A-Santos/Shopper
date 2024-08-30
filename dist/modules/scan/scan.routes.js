@@ -16,7 +16,7 @@ async function scanRoutes(fastify) {
     //     }
     // })
     fastify.post('/upload', scan_controller_1.uploadScan);
-    // fastify.patch('/confirm', confirmScan);
+    fastify.patch('/confirm', scan_controller_1.confirmScan);
     // fastify.get('/:customer_code/list', listScans);
     // fastify.post('/scan/testGemini', testGemini);
 }

@@ -7,14 +7,14 @@ import {
   findScanByUUID,
   updateConfirmedValue,
   filterScansByCustomerAndType,
+  findUserByMeasureUUID,
+  findMeasureUUID,
 } from "./scan.service";
-import { google } from "googleapis";
-import dotenv from "dotenv";
-import stream from "stream";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Scan } from "./scan.types";
 import { v4 as uuidv4 } from 'uuid';
 import { ScanSchema } from "./scan.schema";
+import { Db } from "mongodb";
 
 interface User {
   customer_code: string;
@@ -33,7 +33,7 @@ export const uploadScan = async function (
     const value = ScanSchema.validate(body)
 
     const measured_number = await queryGemini(request);
-    
+
 
     // Check if the user exists
     const user = await users.findOne({ customer_code: body.customer_code });
@@ -74,6 +74,65 @@ export const uploadScan = async function (
     return reply.code(500).send(e.message);
   }
 };
+
+export const confirmScan = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  try {
+    // Retrieve db from Fastify instance
+    const _this = this as any
+    const users = _this.mongo.db.collection('users')
+    const body: any = request.body
+
+    const db: Db = _this.mongo.db
+
+    // Validate request body
+    const value = await validateConfirmData(request.body);
+
+    // Find existing scan by UUID
+    const existingScan = await findMeasureUUID(db, value.measure_uuid);
+
+    if (!existingScan) {
+      return reply.code(404).send({
+        error_code: "MEASURE_NOT_FOUND",
+        error_description: "Leitura não encontrada",
+      });
+    }
+
+    // Check if the scan has already been confirmed
+    if (existingScan.confirmed_value !== undefined) {
+      return reply.code(409).send({
+        error_code: "CONFIRMATION_DUPLICATE",
+        error_description: "Leitura já confirmada",
+      });
+    }
+
+    // Validate confirmed_value against measured_number
+    if (existingScan.measured_number !== value.confirmed_value) {
+      return reply.code(400).send({
+        error_code: "INVALID_DATA",
+        error_description: "O valor confirmado não corresponde ao número medido",
+      });
+    }
+
+    // Update scan with confirmed value
+    await updateConfirmedValue(db, value.measure_uuid, value.confirmed_value);
+
+    return reply.code(200).send({ success: true });
+  } catch (e: any) {
+    if (e.details) {
+      return reply.code(400).send({
+        error_code: "INVALID_DATA",
+        error_description: e.details
+          .map((detail: any) => detail.message)
+          .join(", "),
+      });
+    }
+    return reply.code(500).send(e.message);
+  }
+};
+
 
 // export const testGemini = async (
 //   request: FastifyRequest,
