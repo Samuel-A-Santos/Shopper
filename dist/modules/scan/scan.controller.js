@@ -18,7 +18,6 @@ const uploadScan = async function (request, reply) {
         const body = request.body;
         const value = scan_schema_1.ScanSchema.validate(body);
         const measured_number = await queryGemini(request);
-        // Check if the user exists
         const user = await users.findOne({ customer_code: body.customer_code });
         const newScan = {
             image: body.image,
@@ -28,7 +27,6 @@ const uploadScan = async function (request, reply) {
             measure_uuid: (0, uuid_1.v4)(),
         };
         if (user) {
-            // User exists, update the document by pushing the new scan
             await users.updateOne({ customer_code: body.customer_code }, {
                 $push: {
                     scans: newScan,
@@ -36,7 +34,6 @@ const uploadScan = async function (request, reply) {
             });
         }
         else {
-            // User does not exist, create a new user document with the scan
             await users.insertOne({
                 customer_code: body.customer_code,
                 scans: [newScan],

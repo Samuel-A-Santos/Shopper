@@ -7,8 +7,6 @@ dotenv.config();
 const server = fastify();
 
 server.register(require('@fastify/mongodb'), {
-  // force to close the mongodb connection when app stopped
-  // the default value is false
   forceClose: true,
 
   url: process.env.MONGODB_URI || 'mongodb://localhost/projeto2'

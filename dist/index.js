@@ -9,8 +9,6 @@ const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const server = (0, fastify_1.default)();
 server.register(require('@fastify/mongodb'), {
-    // force to close the mongodb connection when app stopped
-    // the default value is false
     forceClose: true,
     url: process.env.MONGODB_URI || 'mongodb://localhost/projeto2'
 });
