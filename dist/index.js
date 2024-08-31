@@ -6,18 +6,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const fastify_1 = __importDefault(require("fastify"));
 const scan_routes_1 = __importDefault(require("./modules/scan/scan.routes"));
 const dotenv_1 = __importDefault(require("dotenv"));
-const mongodb_1 = __importDefault(require("@fastify/mongodb"));
+const mongoose_1 = __importDefault(require("mongoose"));
+const errorHandler_1 = require("./middleware/errorHandler");
+const fastify_multipart_1 = __importDefault(require("fastify-multipart"));
 dotenv_1.default.config();
-const server = (0, fastify_1.default)({ logger: true });
+const server = (0, fastify_1.default)({ logger: false });
+server.register(fastify_multipart_1.default);
 const start = async () => {
     try {
-        await server.register(mongodb_1.default, {
-            forceClose: true,
-            url: process.env.MONGODB_URI || 'mongodb://localhost/projeto2'
+        await mongoose_1.default.connect(process.env.MONGODB_URI || 'mongodb://localhost/projeto2', {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
         });
         server.register(scan_routes_1.default);
-        await server.listen({ port: 8080, host: '0.0.0.0' });
-        console.log(`Servidor rodando em ${server.server.address()}`);
+        (0, errorHandler_1.errorHandler)(server); // Register the error handler
+        await server.listen({ port: 8081, host: '0.0.0.0' });
+        const address = server.server.address();
+        if (address && typeof address !== 'string') {
+            console.log(`Servidor rodando em ${address.address}:${address.port}`);
+        }
+        else {
+            console.log('Servidor rodando, mas não foi possível obter o endereço.');
+        }
     }
     catch (err) {
         server.log.error(err);

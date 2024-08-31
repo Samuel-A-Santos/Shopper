@@ -1,139 +1,93 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import {
-  validateUploadData,
-} from "./scan.service";
 import dotenv from "dotenv";
 dotenv.config();
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Scan } from "./scan.types";
 import { v4 as uuidv4 } from "uuid";
-import { ScanSchema } from "./scan.schema";
-import Joi from "joi";
+import { Scan, IScan } from "./scan.model";
+import User from "../user/user.model";
+import { uploadScanResponseMapping } from "./scan.mapping";
+import { MongoClient, GridFSBucket } from "mongodb";
 
 interface User {
   customer_code: string;
-  scans: Scan[];
+  scans: IScan[];
 }
 
-const confirmSchema = Joi.object({
-  measure_uuid: Joi.string().required(),
-  confirmed_value: Joi.number().integer().required()
+const client = new MongoClient(process.env.MONGODB_URI || 'mongodb://localhost/projeto2');
+let bucket: GridFSBucket;
+
+client.connect().then(() => {
+  const db = client.db();
+  bucket = new GridFSBucket(db, { bucketName: 'uploads' });
 });
 
 export const uploadScan = async function (
-  request: FastifyRequest,
+  body: any,
   reply: FastifyReply
 ) {
-  try {
-    // @ts-ignore
-    const _this = this as any;
-    const users = _this.mongo.db.collection("users");
-    const body: any = request.body;
+  const uuid = uuidv4();
+  const measured_number = await queryGemini(body);
+  const user = await User.findOne({ customer_code: body.customer_code });
 
-    const value = ScanSchema.validate(body);
+  const newScan = new Scan({
+    image: `${reply.request.hostname}/file/${uuid}`,
+    measure_datetime: body.measure_datetime,
+    measure_type: body.measure_type,
+    measured_number,
+    measure_uuid: uuid,
+    customer_code: body.customer_code,
+  });
 
-    const measured_number = await queryGemini(request);
+  await newScan.save();
+  await uploadArchive(body.image, newScan, uuid);
 
-    const user = await users.findOne({ customer_code: body.customer_code });
-
-    const newScan = {
-      image: body.image,
-      measure_datetime: body.measure_datetime,
-      measure_type: body.measure_type,
-      measured_number,
-      measure_uuid: uuidv4(),
+  if (user) {
+    user.scans.push(newScan);
+    await user.save();
+  } else {
+    const newUser = new User({
       customer_code: body.customer_code,
-    };
-
-    if (user) {
-      await users.updateOne(
-        { customer_code: body.customer_code },
-        {
-          $push: {
-            scans: newScan,
-          },
-        }
-      );
-    } else {
-      await users.insertOne({
-        customer_code: body.customer_code,
-        scans: [newScan],
-      });
-    }
-
-    return reply.code(200).send(newScan);
-  } catch (e: any) {
-    if (e.details) {
-      return reply
-        .code(400)
-        .send(e.details.map((detail: any) => detail.message));
-    }
-    return reply.code(500).send(e.message);
+      scans: [newScan],
+    });
+    await newUser.save();
   }
+
+  return reply.code(200).send(uploadScanResponseMapping(newScan));
 };
 
 export const confirmScan = async (
-  request: FastifyRequest,
+  { measure_uuid, confirmed_value }: any,
   reply: FastifyReply
 ) => {
-  try {
+  const scan = await Scan.findOne({ measure_uuid });
 
-    const { error, value } = confirmSchema.validate(request.body);
-    if (error) {
-      return reply.code(400).send({
-        error_code: "INVALID_DATA",
-        error_description: error.details.map(detail => detail.message).join(", ")
-      });
-    }
-
-    const { measure_uuid, confirmed_value } = value;
-
-    const db = (request as any).server.mongo.db;
-
-    const users = db.collection("users");
-    const user = await users.findOne({ "scans.measure_uuid": measure_uuid });
-
-    if (!user) {
-      return reply.code(404).send({
-        error_code: "MEASURE_NOT_FOUND",
-        error_description: "Leitura não encontrada"
-      });
-    }
-
-    const scan = user.scans.find((s: any) => s.measure_uuid === measure_uuid);
-
-    if (!scan) {
-      return reply.code(404).send({
-        error_code: "MEASURE_NOT_FOUND",
-        error_description: "Leitura não encontrada"
-      });
-    }
-
-    if (scan.confirmed_value !== undefined) {
-      return reply.code(409).send({
-        error_code: "CONFIRMATION_DUPLICATE",
-        error_description: "Leitura já confirmada"
-      });
-    }
-
-    const updateResult = await users.updateOne(
-      { "scans.measure_uuid": measure_uuid },
-      { $set: { "scans.$.confirmed_value": confirmed_value } }
-    );
-
-
-    if (updateResult.modifiedCount === 0) {
-      throw new Error("Falha ao atualizar o documento");
-    }
-
-    return reply.code(200).send({ success: true });
-  } catch (e: any) {
-    return reply.code(500).send({
-      error_code: "INTERNAL_SERVER_ERROR",
-      error_description: "Erro interno do servidor",
-      details: e.message
+  if (!scan) {
+    return reply.code(404).send({
+      error_code: "MEASURE_NOT_FOUND",
+      error_description: "Leitura não encontrada"
     });
   }
+
+  const user = await User.findOne({ customer_code: scan.customer_code });
+
+  if (!user) {
+    return reply.code(404).send({
+      error_code: "CUSTOMER_NOT_FOUND",
+      error_description: "Cliente não encontrado"
+    });
+  }
+
+  if (scan.confirmed_value !== undefined) {
+    return reply.code(409).send({
+      error_code: "CONFIRMATION_DUPLICATE",
+      error_description: "Leitura já confirmada"
+    });
+  }
+
+  scan.confirmed_value = confirmed_value;
+  await scan.save();
+
+  return reply.code(200).send({ success: true });
 };
 
 export const listScans = async (
@@ -143,60 +97,67 @@ export const listScans = async (
   const { customer_code } = request.params as { customer_code: string };
   const { measure_type } = request.query as { measure_type?: string };
 
-  const db = (request as any).mongo?.db ||
-    (request as any).mongo?.client?.db() ||
-    (request as any).server?.mongo?.db;
+  const user = await User.findOne({ customer_code }).select('-_id -__v').exec();
 
-  if (!db) {
-    return reply.code(500).send({
-      error_code: "DATABASE_CONNECTION_FAILED",
-      error_description: "Falha na conexão com o banco de dados"
+  if (!user) {
+    return reply.code(404).send({
+      error_code: "CUSTOMER_NOT_FOUND",
+      error_description: "Cliente não encontrado"
     });
   }
 
-  try {
-    const users = db.collection("users");
+  const scans = user.scans || [];
+  const scansJson = await Promise.all(scans.map((scan: any) => Scan.findOne({ _id: scan._id })));
+  let listScans = await Scan.find({ measure_uuid: { $in: scansJson.map((scan: any) => scan.measure_uuid) } }).select('-_id -__v');
 
-    const user = await users.findOne({ customer_code });
+  if (measure_type) {
+    listScans = listScans.filter(
+      (scan: any) => String(scan.measure_type).toUpperCase() === measure_type.toUpperCase()
+    );
+  }
 
-    if (!user) {
-      return reply.code(404).send({
-        error_code: "CUSTOMER_NOT_FOUND",
-        error_description: "Cliente não encontrado"
-      });
-    }
-
-
-    let filteredScans = user.scans || [];
-
-    if (measure_type) {
-      filteredScans = filteredScans.filter(
-        (scan: any) => scan.measure_type === measure_type
-      );
-    }
-
-    if (filteredScans.length === 0) {
-      return reply.code(404).send({
-        error_code: "MEASURES_NOT_FOUND",
-        error_description: "Nenhuma leitura encontrada"
-      });
-    }
-
-    console.log(`Retornando ${filteredScans.length} scans`);
-    return reply.send({
-      customer_code,
-      measures: filteredScans,
-    });
-  } catch (e: any) {
-    return reply.code(500).send({
-      error_code: "INTERNAL_SERVER_ERROR",
-      error_description: "Erro interno do servidor"
+  if (listScans.length === 0) {
+    return reply.code(404).send({
+      error_code: "MEASURES_NOT_FOUND",
+      error_description: "Nenhuma leitura encontrada"
     });
   }
+
+  console.log(`Retornando ${listScans.length} scans`);
+  return reply.send({
+    customer_code,
+    measures: listScans,
+  });
 };
-async function queryGemini(request) {
-  const value = await validateUploadData(request.body);
 
+const uploadArchive = async function (
+  data: any,
+  scan: IScan,
+  uuid: string
+) {
+  const archiveData = Buffer.from(data, 'base64');
+
+  const uploadStream = bucket.openUploadStream(uuid);
+  uploadStream.end(archiveData);
+
+  const scanFound = await Scan.findOne({ measure_uuid: scan.measure_uuid });
+
+  if (scanFound) {
+    scanFound.archive_uuid = uuid;
+    await scanFound.save();
+  }
+
+  return { uuid };
+};
+
+export const getFile = async (filename: string) => {
+  const downloadStream = bucket.openDownloadStreamByName(filename);
+  const fileData = await downloadStream.toArray();
+  let imgData = new Blob(fileData, { type: 'image/png' });
+  return imgData.stream();
+}
+
+async function queryGemini(body) {
   const genAI = new GoogleGenerativeAI(process.env.API_KEY || "");
 
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -205,7 +166,7 @@ async function queryGemini(request) {
     "Retornar a medida do registro. Apenas o número, sem os zero a esquerda";
   const image = {
     inlineData: {
-      data: request.body.image,
+      data: body.image,
       mimeType: "image/png",
     },
   };
@@ -214,3 +175,5 @@ async function queryGemini(request) {
   const measure = response.text();
   return Number(measure.split(" ")[0]);
 }
+
+

@@ -27,3 +27,14 @@ export const ConfirmSchema = Joi.object({
         "any.required": `"confirmed_value" is required`
     })
 });
+
+export const ListSchema = Joi.object({
+    customer_code: Joi.string().required().messages({
+        "string.base": `"customer_code" must be a string`,
+        "any.required": `"customer_code" is required`
+    }),
+    measure_type: Joi.string().valid("WATER", "GAS").insensitive().required().messages({
+        "any.only": `"measure_type" must be either "WATER" or "GAS"`,
+        "string.base": `"measure_type" must be a string`
+    })
+});
