@@ -8,7 +8,6 @@ import {
   updateConfirmedValue,
   filterScansByCustomerAndType,
 } from "./scan.service";
-import { google } from "googleapis";
 import dotenv from "dotenv";
 dotenv.config();
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -43,6 +42,7 @@ export const uploadScan = async function (
       measure_type: body.measure_type,
       measured_number,
       measure_uuid: uuidv4(),
+      customer_code: body.customer_code,
     };
 
     if (user) {
@@ -71,89 +71,6 @@ export const uploadScan = async function (
     return reply.code(500).send(e.message);
   }
 };
-
-// export const testGemini = async (
-//   request: FastifyRequest,
-//   reply: FastifyReply
-// ) => {
-//   try {
-//     const { imageBase64 } = request.body as { imageBase64: string };
-
-//     if (!imageBase64) {
-//       return reply.code(400).send({ error: "Image data is required" });
-//     }
-
-//     // Initialize the Google API
-//     const genaiService = await google.discoverAPI(GENAI_DISCOVERY_URL);
-//     const geminiKey = process.env.GEMINI_KEY;
-//     if (!geminiKey) {
-//       throw new Error("GEMINI_KEY is not set");
-//     }
-//     const auth = new google.auth.GoogleAuth().fromAPIKey(geminiKey);
-
-//     // Convert the base64 image into a buffer stream
-//     const bufferStream = new stream.PassThrough();
-//     bufferStream.end(Buffer.from(imageBase64, "base64"));
-
-//     const media = {
-//       mimeType: "image/png", // Assuming the image is a PNG, change this if necessary
-//       body: bufferStream,
-//     };
-
-//     const requestBody = {
-//       file: { displayName: "Uploaded Image" },
-//     };
-
-//     // Upload the image to Gemini
-//     const createFileResponse = await genaiService.media["media.upload"]({
-//       media: media,
-//       auth: auth,
-//       requestBody: requestBody,
-//     });
-
-//     const file = createFileResponse.data.file;
-
-//     // Prepare contents for generating the text from the image
-//     const contents = {
-//       contents: [
-//         {
-//           role: "user",
-//           parts: [
-//             { file_data: { file_uri: file.uri, mime_type: file.mimeType } },
-//           ],
-//         },
-//       ],
-//       generation_config: {
-//         maxOutputTokens: 4096,
-//         temperature: 0.5,
-//         topP: 0.8,
-//       },
-//     };
-
-//     // Generate content from the image using Gemini
-//     const generateContentResponse = await genaiService.models[
-//       "generateContent"
-//     ]({
-//       model: `models/gemini-1.5-pro-latest`,
-//       requestBody: contents,
-//       auth: auth,
-//     });
-
-//     const measuredValue =
-//       generateContentResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-//     return reply.code(200).send({
-//       measured_value: measuredValue,
-//       success: true,
-//     });
-//   } catch (e: any) {
-//     console.error("Error during Gemini API request:", e.message);
-//     return reply.code(500).send({
-//       error: "Failed to process image",
-//       details: e.message,
-//     });
-//   }
-// };
 
 // export const confirmScan = async (
 //   request: FastifyRequest,
@@ -194,48 +111,52 @@ export const uploadScan = async function (
 //   }
 // };
 
-// // export const listScans = async (
-// //   request: FastifyRequest,
-// //   reply: FastifyReply
-// // ) => {
-// //   const { customer_code } = request.params as { customer_code: string };
-// //   const { measure_type } = request.query as { measure_type?: string };
+export const listScans = async (
+  request: FastifyRequest,
+  reply: FastifyReply
+) => {
+  const { customer_code } = request.params as { customer_code: string };
+  const { measure_type } = request.query as { measure_type?: string };
 
-// //   try {
-// //     const filteredScans = filterScansByCustomerAndType(
-// //       customer_code,
-// //       measure_type
-// //     );
+  const db = request.mongo?.db;
 
-// //     if (filteredScans.length === 0) {
-// //       return reply.code(404).send({
-// //         error_code: "MEASURES_NOT_FOUND",
-// //         error_description: "Nenhuma leitura encontrada",
-// //       });
-// //     }
+  if (!db) {
+    return reply.code(500).send("Database connection failed.");
+  }
 
-// //     const measures = filteredScans.map((scan) => ({
-// //       measure_uuid: scan.measure_uuid,
-// //       measure_datetime: scan.measure_datetime,
-// //       measure_type: scan.measure_type,
-// //       has_confirmed: scan.confirmed_value !== undefined,
-// //       image_url: scan.image,
-// //     }));
+  try {
+    const user = await db.collection("users").findOne({ customer_code });
 
-// //     return reply.code(200).send({
-// //       customer_code: customer_code,
-// //       measures: measures,
-// //     });
-// //   } catch (e: any) {
-// //     if (e.message === "INVALID_TYPE") {
-// //       return reply.code(400).send({
-// //         error_code: "INVALID_TYPE",
-// //         error_description: "Tipo de medição não permitida",
-// //       });
-// //     }
-// //     return reply.code(500).send(e.message);
-// //   }
-// // };
+    if (!user) {
+      return reply.code(404).send({
+        error_code: "CUSTOMER_NOT_FOUND",
+        error_description: "Cliente não encontrado",
+      });
+    }
+
+    let filteredScans = user.scans;
+
+    if (measure_type) {
+      filteredScans = filteredScans.filter(
+        (scan: Scan) => scan.measure_type === measure_type
+      );
+    }
+
+    if (filteredScans.length === 0) {
+      return reply.code(404).send({
+        error_code: "MEASURES_NOT_FOUND",
+        error_description: "Nenhuma leitura encontrada",
+      });
+    }
+
+    return reply.code(200).send({
+      customer_code,
+      measures: filteredScans,
+    });
+  } catch (e: any) {
+    return reply.code(500).send(e.message);
+  }
+};
 async function queryGemini(request) {
   const value = await validateUploadData(request.body);
 
