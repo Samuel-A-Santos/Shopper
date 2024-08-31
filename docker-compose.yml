@@ -6,8 +6,8 @@ services:
       - .env
     build: .
     ports:
-      - "8080:8080"
-      - "9229:9229"  # Add this line for debugging
+      - "8081:8080"
+      - "9229:9229" # Add this line for debugging
     environment:
       - MONGODB_URI=mongodb://mongo:27017/projeto2
       - API_KEY=${API_KEY}

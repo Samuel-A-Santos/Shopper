@@ -21,7 +21,7 @@ const start = async () => {
     server.register(scanRoutes);
     errorHandler(server); // Register the error handler
 
-    await server.listen({ port: 8081, host: '0.0.0.0' });
+    await server.listen({ port: 8080, host: '0.0.0.0' });
     const address = server.server.address();
     if (address && typeof address !== 'string') {
       console.log(`Servidor rodando em ${address.address}:${address.port}`);
