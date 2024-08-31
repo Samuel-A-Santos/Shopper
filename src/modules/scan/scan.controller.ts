@@ -77,11 +77,9 @@ export const confirmScan = async (
   reply: FastifyReply
 ) => {
   try {
-    console.log("Iniciando confirmação do scan");
 
     const { error, value } = confirmSchema.validate(request.body);
     if (error) {
-      console.log("Erro de validação:", error.details);
       return reply.code(400).send({
         error_code: "INVALID_DATA",
         error_description: error.details.map(detail => detail.message).join(", ")
@@ -89,27 +87,22 @@ export const confirmScan = async (
     }
 
     const { measure_uuid, confirmed_value } = value;
-    console.log(`Confirmando scan: ${measure_uuid} com valor: ${confirmed_value}`);
 
     const db = (request as any).server.mongo.db;
 
-    console.log("Buscando usuário com o scan");
     const users = db.collection("users");
     const user = await users.findOne({ "scans.measure_uuid": measure_uuid });
 
     if (!user) {
-      console.log(`Scan não encontrado: ${measure_uuid}`);
       return reply.code(404).send({
         error_code: "MEASURE_NOT_FOUND",
         error_description: "Leitura não encontrada"
       });
     }
 
-    console.log("Usuário encontrado, verificando o scan");
     const scan = user.scans.find((s: any) => s.measure_uuid === measure_uuid);
 
     if (!scan) {
-      console.log(`Scan não encontrado no usuário: ${measure_uuid}`);
       return reply.code(404).send({
         error_code: "MEASURE_NOT_FOUND",
         error_description: "Leitura não encontrada"
@@ -117,30 +110,24 @@ export const confirmScan = async (
     }
 
     if (scan.confirmed_value !== undefined) {
-      console.log(`Scan já confirmado: ${measure_uuid}`);
       return reply.code(409).send({
         error_code: "CONFIRMATION_DUPLICATE",
         error_description: "Leitura já confirmada"
       });
     }
 
-    console.log("Atualizando o valor confirmado no banco de dados");
     const updateResult = await users.updateOne(
       { "scans.measure_uuid": measure_uuid },
       { $set: { "scans.$.confirmed_value": confirmed_value } }
     );
 
-    console.log("Resultado da atualização:", updateResult);
 
     if (updateResult.modifiedCount === 0) {
-      console.log("Nenhum documento foi atualizado");
       throw new Error("Falha ao atualizar o documento");
     }
 
-    console.log("Scan confirmado com sucesso");
     return reply.code(200).send({ success: true });
   } catch (e: any) {
-    console.error("Erro ao confirmar scan:", e);
     return reply.code(500).send({
       error_code: "INTERNAL_SERVER_ERROR",
       error_description: "Erro interno do servidor",
@@ -161,9 +148,6 @@ export const listScans = async (
     (request as any).server?.mongo?.db;
 
   if (!db) {
-    console.error("Falha na conexão com o banco de dados");
-    console.log("request.mongo:", (request as any).mongo);
-    console.log("request.server:", (request as any).server);
     return reply.code(500).send({
       error_code: "DATABASE_CONNECTION_FAILED",
       error_description: "Falha na conexão com o banco de dados"
@@ -173,31 +157,25 @@ export const listScans = async (
   try {
     const users = db.collection("users");
 
-    console.log(`Buscando usuário com customer_code: ${customer_code}`);
     const user = await users.findOne({ customer_code });
 
     if (!user) {
-      console.log(`Usuário não encontrado para customer_code: ${customer_code}`);
       return reply.code(404).send({
         error_code: "CUSTOMER_NOT_FOUND",
         error_description: "Cliente não encontrado"
       });
     }
 
-    console.log(`Usuário encontrado:`, user);
 
     let filteredScans = user.scans || [];
-    console.log(`Número total de scans: ${filteredScans.length}`);
 
     if (measure_type) {
       filteredScans = filteredScans.filter(
         (scan: any) => scan.measure_type === measure_type
       );
-      console.log(`Numero de scans apos filtro por measure_type: ${filteredScans.length}`);
     }
 
     if (filteredScans.length === 0) {
-      console.log(`Nenhum scan encontrado para o usuario`);
       return reply.code(404).send({
         error_code: "MEASURES_NOT_FOUND",
         error_description: "Nenhuma leitura encontrada"
@@ -210,7 +188,6 @@ export const listScans = async (
       measures: filteredScans,
     });
   } catch (e: any) {
-    console.error("Erro ao listar scans:", e);
     return reply.code(500).send({
       error_code: "INTERNAL_SERVER_ERROR",
       error_description: "Erro interno do servidor"
