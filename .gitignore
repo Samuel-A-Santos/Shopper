@@ -24,7 +24,3 @@ logs
 
 # Environment variables
 .env
-dist/
-dist
-./dist/**/**/*
-dist/*
